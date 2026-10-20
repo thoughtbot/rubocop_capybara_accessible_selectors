@@ -1,0 +1,11 @@
+CapybaraAccessibleSelectors/PreferAccessibleSelector:
+  Description: >-
+    Prefer capybara_accessible_selectors semantic selectors (`:heading`,
+    `:modal`, `:navigation`, ...) over raw CSS selectors in Capybara tests.
+  Enabled: true
+  Include:
+    - "**/spec/**/*_spec.rb"
+    - "**/test/**/*_test.rb"
+    - "**/spec/support/**/*.rb"
+  TestIdAttribute: data-testid
+  VersionAdded: "0.1.0"
