@@ -9,3 +9,14 @@ CapybaraAccessibleSelectors/PreferAccessibleSelector:
     - "**/spec/support/**/*.rb"
   TestIdAttribute: data-testid
   VersionAdded: "0.1.0"
+
+CapybaraAccessibleSelectors/NonAccessibleSelector:
+  Description: >-
+    Avoid CSS, XPath, id and class locators in Capybara tests; locate
+    elements by role and accessible name instead.
+  Enabled: false
+  Include:
+    - "**/spec/**/*_spec.rb"
+    - "**/test/**/*_test.rb"
+    - "**/spec/support/**/*.rb"
+  VersionAdded: "0.1.0"
