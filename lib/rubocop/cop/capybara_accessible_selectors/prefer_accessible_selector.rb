@@ -109,12 +109,21 @@ module RuboCop
           {(call _ _ (sym :css) $str ...) (call _ _ $str ...)}
         PATTERN
 
+        # The semantic selector for a parsed CSS subject, or nil when there is none.
+        def self.accessible_selector(subject, test_id_attribute)
+          rule = RULES.find { |candidate| subject.match?(**candidate.except(:selector)) }
+          return rule[:selector] if rule
+          return :test_id if subject.attribute?(test_id_attribute)
+
+          :role unless subject.role.to_s.empty?
+        end
+
         def on_send(node)
           css_selector(node) do |css_node|
             subject = CssSubject.parse(css_node.value)
             next unless subject
 
-            selector = accessible_selector(subject)
+            selector = self.class.accessible_selector(subject, test_id_attribute)
             next unless selector
 
             add_offense(css_node, message: message(node.method_name, selector, subject, css_node))
@@ -123,14 +132,6 @@ module RuboCop
         alias on_csend on_send
 
         private
-
-        def accessible_selector(subject)
-          rule = RULES.find { |candidate| subject.match?(**candidate.except(:selector)) }
-          return rule[:selector] if rule
-          return :test_id if subject.attribute?(test_id_attribute)
-
-          :role unless subject.role.to_s.empty?
-        end
 
         def message(method_name, selector, subject, css_node)
           format(MSG, suggestion: suggestion(method_name, selector), selector: selector,

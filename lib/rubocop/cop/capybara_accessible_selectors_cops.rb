@@ -2,3 +2,4 @@
 
 require_relative "capybara_accessible_selectors/css_subject"
 require_relative "capybara_accessible_selectors/prefer_accessible_selector"
+require_relative "capybara_accessible_selectors/non_accessible_selector"

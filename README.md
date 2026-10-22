@@ -25,7 +25,9 @@ This requires RuboCop 1.72 or later.
 
 ## Usage
 
-The plugin ships one cop, `CapybaraAccessibleSelectors/PreferAccessibleSelector`. It inspects `find`, `find_all`, `all`, `first`, `within`, `within_element`, `has_css?`, `has_no_css?`, `has_selector?`, `has_no_selector?`, `have_css`, `have_no_css`, `have_selector`, `have_no_selector`, `assert_selector`, `assert_no_selector` and `refute_selector`. When a call's CSS selector has a semantic equivalent, the cop reports it:
+The plugin ships two cops. `CapybaraAccessibleSelectors/PreferAccessibleSelector` is enabled by default. `CapybaraAccessibleSelectors/NonAccessibleSelector` is a stricter, opt-in cop (see [Strict mode](#strict-mode)).
+
+`PreferAccessibleSelector` inspects `find`, `find_all`, `all`, `first`, `within`, `within_element`, `has_css?`, `has_no_css?`, `has_selector?`, `has_no_selector?`, `have_css`, `have_no_css`, `have_selector`, `have_no_selector`, `assert_selector`, `assert_no_selector` and `refute_selector`. When a call's CSS selector has a semantic equivalent, the cop reports it:
 
 ```ruby
 # bad
@@ -97,6 +99,42 @@ CapybaraAccessibleSelectors/PreferAccessibleSelector:
   # `Capybara.test_id` / capybara_accessible_selectors' configuration.
   TestIdAttribute: data-testid
 ```
+
+### Strict mode
+
+`CapybaraAccessibleSelectors/NonAccessibleSelector` flags any locator that skips the accessibility tree, whether or not a semantic equivalent can be worked out from it. It's disabled by default. Enable it in `.rubocop.yml`:
+
+```yaml
+CapybaraAccessibleSelectors/NonAccessibleSelector:
+  Enabled: true
+```
+
+It reports:
+
+- CSS strings passed to `find`, `within`, `have_selector` and the other methods `PreferAccessibleSelector` inspects, including interpolated strings: `within("#comment-field")`, `find("#comment-#{id}")`
+- locators typed as `:css`, `:id`, `:xpath` or `:class`, even when they're variables: `find(:css, selector)`, `find(:id, "x")`, `all(:xpath, xpath)`
+- anything passed to CSS-only and XPath-only methods: `have_css(selector)`, `has_xpath?("//li")`, `assert_css`, `assert_no_css`, `refute_css`, `assert_xpath`, `assert_no_xpath`, `refute_xpath`
+- `find_by_id`
+
+```ruby
+# bad
+within("#comment-field") { fill_in "Comment", with: "Hi" }
+find(:xpath, "//nav[@id='main']")
+find_by_id("submit")
+
+# good
+within(:section, "Comments") { fill_in "Comment", with: "Hi" }
+find(:navigation, "Main")
+find_button("Submit")
+```
+
+```
+Avoid CSS locator `"#comment-field"`; locate elements by role and accessible name with capybara_accessible_selectors instead.
+```
+
+Variables passed to methods that accept any selector type (`find(selector)`) are ignored, because their type can't be known. The cop doesn't autocorrect.
+
+When `PreferAccessibleSelector` is enabled and would already report a CSS selector (`find("nav")`), `NonAccessibleSelector` stays quiet, so each selector gets one offense with the most specific message. It follows `PreferAccessibleSelector`'s `TestIdAttribute` when deciding this. If you disable `PreferAccessibleSelector`, `NonAccessibleSelector` reports those selectors too.
 
 ## Development
 
