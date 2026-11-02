@@ -51,7 +51,24 @@ When the gem has a shortcut for the calling method, the message suggests it (`ha
 
 The cop only looks at the subject of the selector, so `".card h2"` is treated like `"h2"`. Classes, ids and pseudo-classes on the subject are allowed. Selector lists (`"h1, h2"`), interpolated strings, variables, XPath and selectors that are already semantic are ignored.
 
-The cop doesn't autocorrect, because the accessible name to locate by can't be worked out from the CSS selector.
+### Autocorrection
+
+The cop autocorrects selectors that are only a tag name and attributes the semantic selector covers in full. It fills in the selector type, a `level:` for `h1`–`h6`, and a locator when the CSS has one: the test id, the `role` for `:role`, and the `itemprop` for `:item`. It uses the shortcut method when there is one:
+
+```ruby
+find("h2", text: "Welcome")              # => find(:heading, level: 2, text: "Welcome")
+expect(page).to have_css("[role=alert]") # => expect(page).to have_alert
+within("dialog") { click_button "OK" }   # => within_dialog { click_button "OK" }
+within("nav") { click_link "Home" }      # => within(:navigation) { click_link "Home" }
+find("[data-testid=submit]")             # => find_by_test_id("submit")
+all("[role=switch]")                     # => all(:role, "switch")
+```
+
+The accessible name can't be worked out from the CSS, so add it yourself after correcting.
+
+The cop leaves a selector alone when correcting it would drop part of it. That covers ancestors (`".card h2"`), classes, ids and pseudo-classes (`"h2.title"`), a tag or attribute the semantic selector doesn't check (`"div[role=dialog]"`, `"[role=region][aria-label=Comments]"`), and attributes with no value to use as a locator (`"[data-testid]"`). It also skips `:rich_text` and `:item_type`, and headings where `level:` can't be added (`find("h2", level: 3)`).
+
+The correction is unsafe, so it only runs with `rubocop -A`. Semantic selectors can match elements the CSS didn't: `:navigation` matches `[role=navigation]` as well as `nav`, and `:heading` without a level matches every heading. That can turn a passing `find` into an ambiguous match. Run your tests after correcting.
 
 ### Supported mappings
 

@@ -1,6 +1,14 @@
 # frozen_string_literal: true
 
 RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelector, :config do
+  # Annotates each line's first string literal as an offense, abbreviating the message.
+  def annotate(source)
+    source.each_line.map do |line|
+      literal = line.match(/"(?:[^"\\]|\\.)*"/)
+      "#{line}#{" " * literal.begin(0)}#{"^" * literal[0].length} Prefer [...]\n"
+    end.join
+  end
+
   describe "selector mapping" do
     {
       "[role=dialog][aria-modal=true]" => :modal,
@@ -173,6 +181,72 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
         within_element("main") {}
                        ^^^^^^ Prefer `within_element(:main, …)` (capybara_accessible_selectors `:main`) over CSS selector `"main"`.
       RUBY
+    end
+  end
+
+  describe "autocorrection" do
+    {
+      'find("h2")' => "find(:heading, level: 2)",
+      'find("[role=heading]")' => "find(:heading)",
+      'find("[role=dialog][aria-modal=true]")' => "find(:modal)",
+      'find("nav[role=navigation]")' => "find(:navigation)",
+      'find(:css, "nav")' => "find(:navigation)",
+      'page.find("nav").click' => "page.find(:navigation).click",
+      'element&.first("tr")' => "element&.first(:row)",
+      'all("[role=switch]")' => 'all(:role, "switch")',
+      "all(\"[itemprop='name']\")" => 'all(:item, "name")',
+      'find("[data-testid=submit]")' => 'find_by_test_id("submit")',
+      'find(:css, "[data-testid=submit]")' => 'find_by_test_id("submit")',
+      'expect(page).to have_css("[data-testid=submit]")' => 'expect(page).to have_selector(:test_id, "submit")',
+      'expect(page).to have_css("h2", text: "Welcome")' => 'expect(page).to have_heading(level: 2, text: "Welcome")',
+      'expect(page).to have_selector("[role=alert]")' => "expect(page).to have_alert",
+      'expect(page).to have_no_css "nav"' => "expect(page).to have_no_navigation",
+      'expect(page).to have_css("nav", count: 2)' => "expect(page).to have_navigation(count: 2)",
+      'expect(page).to have_css("img")' => "expect(page).to have_selector(:image)",
+      'page.has_no_css?("h1", wait: 0)' => "page.has_no_selector?(:heading, level: 1, wait: 0)",
+      'assert_selector("footer")' => "assert_selector(:contentinfo)",
+      'within("dialog") { click_button "OK" }' => 'within_dialog { click_button "OK" }',
+      'within("[role=tabpanel]", &block)' => "within_tab_panel(&block)",
+      'within("nav") { click_link "Home" }' => 'within(:navigation) { click_link "Home" }'
+    }.each do |source, corrected|
+      it "corrects #{source}" do
+        expect_offense(annotate("#{source}\n"))
+
+        expect_correction("#{corrected}\n")
+      end
+    end
+
+    it "does not correct selectors the semantic selector doesn't fully cover" do
+      expect_offense(annotate(<<~RUBY))
+        find(".card h2")
+        find("h2.title")
+        find("#main nav")
+        find("nav:first-child")
+        find("div[role=dialog]")
+        find("h2[role=button]")
+        find("h2[aria-level=3]")
+        find("[role=dialog][aria-modal=false]")
+        find("[role=region][aria-label=Comments]")
+        find("[role='switch button']")
+        find("button[data-testid=submit]")
+        find("[data-testid=submit][role=switch]")
+        find("[data-testid]")
+        find("[itemprop]")
+        find("[itemtype=Person]")
+        find("[contenteditable]")
+      RUBY
+
+      expect_no_corrections
+    end
+
+    it "does not correct headings when level: can't be added" do
+      expect_offense(annotate(<<~RUBY))
+        find("h2", level: 3)
+        find("h2", { text: "Welcome" })
+        find("h2", *options)
+      RUBY
+
+      expect_no_corrections
     end
   end
 

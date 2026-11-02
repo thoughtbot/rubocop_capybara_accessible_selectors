@@ -20,6 +20,7 @@ module RuboCop
           \s*(?:[iIsS]\s*)?\]
         /x
         VALUE_OPERATORS = %w[= ~=].freeze
+        SIMPLE = /\A(?:[a-zA-Z][\w-]*)?(?:\[[^\]]*\])*\z/
 
         attr_reader :tag, :attributes
 
@@ -27,18 +28,29 @@ module RuboCop
           return if css.gsub(BRACKETED, "").include?(",")
 
           compound = css.scan(COMPOUND).last
-          new(compound.gsub(PARENTHESIZED, "")) if compound
+          new(compound.gsub(PARENTHESIZED, ""), whole: compound == css.strip) if compound
         end
 
-        def initialize(compound)
+        def initialize(compound, whole: false)
           @tag = compound[TAG, 1]&.downcase
           @attributes = compound.scan(ATTRIBUTE).to_h do |name, operator, *values|
             [name.downcase, (values.compact.first if VALUE_OPERATORS.include?(operator))]
           end
+          @simple = whole && compound.match?(SIMPLE) && compound.scan(BRACKETED).size == @attributes.size
+        end
+
+        # Whether the whole selector is just a tag name and distinct attributes,
+        # with no ancestors, classes, ids or pseudo-classes.
+        def simple?
+          @simple
         end
 
         def role
           attributes["role"]
+        end
+
+        def heading_level
+          tag[1] if tag&.match?(/\Ah[1-6]\z/)
         end
 
         def attribute?(name)
