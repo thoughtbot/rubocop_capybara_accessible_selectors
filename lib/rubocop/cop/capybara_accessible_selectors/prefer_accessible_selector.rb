@@ -14,8 +14,13 @@ module RuboCop
       # treated like `"h2"`. Selector lists, interpolated strings, variables
       # and XPath are ignored.
       #
-      # This cop does not autocorrect: the accessible name to locate by can't
-      # be inferred from the CSS selector.
+      # Autocorrection is unsafe and only happens when the whole CSS selector
+      # is a tag name and attributes that the semantic selector fully covers,
+      # like `"h2"`, `"[role=dialog][aria-modal=true]"` or
+      # `"[data-testid=submit]"`. The accessible name can't be inferred, so it
+      # is left for you to add. Semantic selectors also match elements the CSS
+      # didn't (`:navigation` matches `[role=navigation]` as well as `nav`),
+      # which can make a `find` ambiguous.
       #
       # @example
       #   # bad
@@ -28,6 +33,11 @@ module RuboCop
       #   expect(page).to have_modal("Confirm")
       #   within(:navigation, "Main") { click_link "Home" }
       #
+      #   # autocorrected
+      #   find(:heading, level: 2)
+      #   expect(page).to have_modal
+      #   within(:navigation) { click_link "Home" }
+      #
       # @example TestIdAttribute: data-testid (default)
       #   # bad
       #   find("[data-testid=submit]")
@@ -35,6 +45,8 @@ module RuboCop
       #   # good
       #   find_by_test_id("submit")
       class PreferAccessibleSelector < Base
+        extend AutoCorrector
+
         MSG = "Prefer `%<suggestion>s` (capybara_accessible_selectors `:%<selector>s`%<hint>s) " \
               "over CSS selector `%<css>s`."
 
@@ -126,7 +138,10 @@ module RuboCop
             selector = self.class.accessible_selector(subject, test_id_attribute)
             next unless selector
 
-            add_offense(css_node, message: message(node.method_name, selector, subject, css_node))
+            add_offense(css_node, message: message(node.method_name, selector, subject, css_node)) do |corrector|
+              SelectorCorrection.new(node, selector, subject, test_id_attribute:)
+                                .call(corrector, *replacement_method(node.method_name, selector))
+            end
           end
         end
         alias on_csend on_send
@@ -139,18 +154,22 @@ module RuboCop
         end
 
         def suggestion(method_name, selector)
-          return "find_by_test_id" if method_name == :find && selector == :test_id
+          replacement, shortcut = replacement_method(method_name, selector)
+          shortcut ? replacement.to_s : "#{replacement}(:#{selector}, …)"
+        end
+
+        # The method to call instead, and whether it already implies the selector.
+        def replacement_method(method_name, selector)
+          return [:find_by_test_id, true] if method_name == :find && selector == :test_id
 
           prefix, shortcuts = SHORTCUTS[method_name]
-          return "#{prefix}_#{selector}" if shortcuts&.include?(selector)
+          return [:"#{prefix}_#{selector}", true] if shortcuts&.include?(selector)
 
-          "#{SELECTOR_METHODS.fetch(method_name, method_name)}(:#{selector}, …)"
+          [SELECTOR_METHODS.fetch(method_name, method_name), false]
         end
 
         def hint(selector, subject)
-          return "" unless selector == :heading && HEADING_TAGS.include?(subject.tag)
-
-          ", `level: #{subject.tag.delete_prefix("h")}`"
+          selector == :heading && subject.heading_level ? ", `level: #{subject.heading_level}`" : ""
         end
 
         def test_id_attribute
