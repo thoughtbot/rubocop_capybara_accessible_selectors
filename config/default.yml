@@ -20,4 +20,5 @@ CapybaraAccessibleSelectors/NonAccessibleSelector:
     - "**/spec/**/*_spec.rb"
     - "**/test/**/*_test.rb"
     - "**/spec/support/**/*.rb"
+  CheckElementAttributes: false
   VersionAdded: "0.1.0"

@@ -181,6 +181,13 @@ It reports:
 - locators typed as `:css`, `:id`, `:xpath` or `:class`, even when they're variables: `find(:css, selector)`, `find(:id, "x")`, `all(:xpath, xpath)`
 - anything passed to CSS-only and XPath-only methods: `have_css(selector)`, `has_xpath?("//li")`, `assert_css`, `assert_no_css`, `refute_css`, `assert_xpath`, `assert_no_xpath`, `refute_xpath`
 - `find_by_id`
+- with `CheckElementAttributes: true`, the `:element` selector located by `id:`, `class:` or a `data-*` attribute: `within(:element, id: "x")`, `find(:element, "div", "data-testid": "card")`, `have_element("div", class: "card")`
+
+```yaml
+CapybaraAccessibleSelectors/NonAccessibleSelector:
+  Enabled: true
+  CheckElementAttributes: true
+```
 
 ```ruby
 # bad

@@ -9,3 +9,4 @@
 - `CapybaraAccessibleSelectors/PreferAccessibleSelector` suggests `:role, "cell"` for `td` and no longer autocorrects `td`, `th` or `svg`, whose roles depend on their context.
 - `CapybaraAccessibleSelectors/PreferAccessibleSelector` no longer autocorrects negated assertions (`have_no_css`, `assert_no_selector`, `expect(…).not_to`, …).
 - `CapybaraAccessibleSelectors/PreferAccessibleSelector` autocorrects an `aria-label` into the accessible name locator (`find("[role=region][aria-label=Comments]")` → `find(:region, "Comments", exact: true)`), and a literal `text:` into the locator for selectors named by their content (`assert_selector "h1", text: "Acme"` → `assert_selector :heading, "Acme", level: 1`).
+- Add `CheckElementAttributes` to `CapybaraAccessibleSelectors/NonAccessibleSelector` (off by default), which flags the `:element` selector located by `id:`, `class:` or a `data-*` attribute.

@@ -113,4 +113,50 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::NonAccessibleSelector,
       end
     end
   end
+
+  describe "CheckElementAttributes" do
+    def element_message(attribute)
+      "Avoid locating `:element` by `#{attribute}`; locate elements by role and accessible name " \
+        "with capybara_accessible_selectors instead."
+    end
+
+    let(:source) do
+      <<~RUBY
+        within(:element, id: "comment-field") {}
+        find(:element, "div", class: "card", "data-testid": "card")
+        expect(page).to have_element("div", "data-role" => "x")
+      RUBY
+    end
+
+    it "is off by default" do
+      expect_no_offenses(source)
+    end
+
+    context "when enabled" do
+      let(:cop_config) { { "CheckElementAttributes" => true } }
+
+      it "flags :element located by id, class or data-* attributes" do
+        expect_offense(<<~RUBY)
+          within(:element, id: "comment-field") {}
+                           ^^^^^^^^^^^^^^^^^^^ #{element_message("id:")}
+          find(:element, "div", class: "card", "data-testid": "card")
+                                ^^^^^^^^^^^^^ #{element_message("class:")}
+                                               ^^^^^^^^^^^^^^^^^^^^^ #{element_message('"data-testid":')}
+          expect(page).to have_element("div", "data-role" => "x")
+                                              ^^^^^^^^^^^^^^^^^^ #{element_message('"data-role":')}
+          page.has_no_element?(id: "x")
+                               ^^^^^^^ #{element_message("id:")}
+        RUBY
+      end
+
+      it "does not flag other attributes, other selectors or tag names" do
+        expect_no_offenses(<<~RUBY)
+          find(:element, "dialog", open: true)
+          find(:element, "div")
+          find(:button, "Save", class: "primary")
+          expect(page).to have_element("dialog")
+        RUBY
+      end
+    end
+  end
 end
