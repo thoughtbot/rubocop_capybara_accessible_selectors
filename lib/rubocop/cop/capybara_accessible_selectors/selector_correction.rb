@@ -19,11 +19,11 @@ module RuboCop
         # Selectors whose locator is the value of an attribute (`:test_id` uses the configured attribute).
         LOCATOR_ATTRIBUTES = { role: "role", item: "itemprop" }.freeze
 
-        def initialize(node, selector, subject, test_id_attribute:)
+        def initialize(node, rule, subject, test_id_attribute:)
           @node = node
-          @selector = selector
+          @rule = rule
+          @selector = rule[:selector]
           @subject = subject
-          @rule = PreferAccessibleSelector::RULES.find { |rule| rule[:selector] == selector } || {}
           @locator_attribute = selector == :test_id ? test_id_attribute : LOCATOR_ATTRIBUTES[selector]
           @selector_arguments = node.arguments.take(node.first_argument.sym_type? ? 2 : 1)
           @rest = node.arguments.drop(@selector_arguments.size)
@@ -42,7 +42,7 @@ module RuboCop
         attr_reader :node, :selector, :subject, :rule, :locator_attribute, :selector_arguments, :rest
 
         def correctable?
-          return false if UNCORRECTABLE.include?(selector) || !subject.simple?
+          return false if UNCORRECTABLE.include?(selector) || !rule.fetch(:correctable, true) || !subject.simple?
 
           tag_covered? && attributes_covered? && arguments_inferable?
         end

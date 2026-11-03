@@ -90,7 +90,7 @@ module RuboCop
           return false unless config.cop_enabled?(PreferAccessibleSelector.cop_name)
 
           subject = CssSubject.parse(locator.value)
-          !subject.nil? && !PreferAccessibleSelector.accessible_selector(subject, prefer_test_id_attribute).nil?
+          !subject.nil? && !SelectorRules.for(subject, prefer_test_id_attribute).nil?
         end
 
         def prefer_test_id_attribute

@@ -66,7 +66,18 @@ all("[role=switch]")                     # => all(:role, "switch")
 
 The accessible name can't be worked out from the CSS, so add it yourself after correcting.
 
-The cop leaves a selector alone when correcting it would drop part of it. That covers ancestors (`".card h2"`), classes, ids and pseudo-classes (`"h2.title"`), a tag or attribute the semantic selector doesn't check (`"div[role=dialog]"`, `"[role=region][aria-label=Comments]"`), and attributes with no value to use as a locator (`"[data-testid]"`). It also skips `:rich_text` and `:item_type`, and headings where `level:` can't be added (`find("h2", level: 3)`).
+The cop leaves a selector alone when correcting it would drop part of it. That covers:
+
+- ancestors (`".card h2"`)
+- classes, ids and pseudo-classes (`"h2.title"`)
+- a tag or attribute the semantic selector doesn't check (`"div[role=dialog]"`, `"[role=region][aria-label=Comments]"`)
+- attributes with no value to use as a locator (`"[data-testid]"`)
+
+It also skips:
+
+- `:rich_text` and `:item_type`
+- headings where `level:` can't be added (`find("h2", level: 3)`)
+- elements whose role depends on where they are: `td` is a `cell` in a plain table and only a `gridcell` inside `role=grid`, `th` can be a row header, and an `svg` icon hidden with `aria-hidden` isn't an image
 
 The correction is unsafe, so it only runs with `rubocop -A`. Semantic selectors can match elements the CSS didn't: `:navigation` matches `[role=navigation]` as well as `nav`, and `:heading` without a level matches every heading. That can turn a passing `find` into an ambiguous match. Run your tests after correcting.
 
@@ -88,10 +99,11 @@ The correction is unsafe, so it only runs with `rubocop -A`. Semantic selectors 
 | `details` | `:disclosure` |
 | `summary` | `:disclosure_button` |
 | `[role=grid]` | `:grid` |
-| `th`, `[role=columnheader]` | `:columnheader` |
-| `td`, `[role=gridcell]` | `:gridcell` |
+| `th`, `[role=columnheader]` | `:columnheader` (`th` isn't autocorrected) |
+| `[role=gridcell]` | `:gridcell` |
+| `td` | `:role, "cell"` (not autocorrected) |
 | `tr`, `[role=row]` | `:row` |
-| `img`, `svg`, `[role=img]`, `[role=image]` | `:image` |
+| `img`, `svg`, `[role=img]`, `[role=image]` | `:image` (`svg` isn't autocorrected) |
 | `[role=menu]` | `:menu` |
 | `[role=menuitem]` | `:menuitem` |
 | `[role=tabpanel]` | `:tab_panel` |

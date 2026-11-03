@@ -22,6 +22,9 @@ module RuboCop
       # didn't (`:navigation` matches `[role=navigation]` as well as `nav`),
       # which can make a `find` ambiguous.
       #
+      # Elements whose role depends on their context (`td`, `th`, `svg`) are
+      # reported but never corrected.
+      #
       # @example
       #   # bad
       #   find("h2")
@@ -57,38 +60,6 @@ module RuboCop
           assert_selector assert_no_selector refute_selector
         ].freeze
 
-        HEADING_TAGS = %w[h1 h2 h3 h4 h5 h6].freeze
-
-        # Ordered most-specific first; the first matching rule wins.
-        RULES = [
-          { selector: :modal, roles: %w[dialog alertdialog], with: { "aria-modal" => "true" } },
-          { selector: :dialog, tags: %w[dialog], roles: %w[dialog alertdialog] },
-          { selector: :heading, tags: HEADING_TAGS, roles: %w[heading] },
-          { selector: :alert, roles: %w[alert] },
-          { selector: :article, tags: %w[article], roles: %w[article] },
-          { selector: :banner, tags: %w[header], roles: %w[banner] },
-          { selector: :contentinfo, tags: %w[footer], roles: %w[contentinfo] },
-          { selector: :main, tags: %w[main], roles: %w[main] },
-          { selector: :navigation, tags: %w[nav], roles: %w[navigation] },
-          { selector: :region, roles: %w[region] },
-          { selector: :section, tags: %w[section aside] },
-          { selector: :disclosure, tags: %w[details] },
-          { selector: :disclosure_button, tags: %w[summary] },
-          { selector: :grid, roles: %w[grid] },
-          { selector: :columnheader, tags: %w[th], roles: %w[columnheader] },
-          { selector: :gridcell, tags: %w[td], roles: %w[gridcell] },
-          { selector: :row, tags: %w[tr], roles: %w[row] },
-          { selector: :image, tags: %w[img svg], roles: %w[img image] },
-          { selector: :menu, roles: %w[menu] },
-          { selector: :menuitem, roles: %w[menuitem] },
-          { selector: :tab_panel, roles: %w[tabpanel] },
-          { selector: :tab_button, roles: %w[tab] },
-          { selector: :combo_box, roles: %w[combobox] },
-          { selector: :rich_text, attributes: %w[contenteditable] },
-          { selector: :item, attributes: %w[itemprop] },
-          { selector: :item_type, attributes: %w[itemtype] }
-        ].freeze
-
         # Selectors with a `have_<name>` / `have_no_<name>` matcher shortcut.
         HAVE_SHORTCUTS = %i[
           alert article banner columnheader combo_box contentinfo disclosure
@@ -121,26 +92,16 @@ module RuboCop
           {(call _ _ (sym :css) $str ...) (call _ _ $str ...)}
         PATTERN
 
-        # The semantic selector for a parsed CSS subject, or nil when there is none.
-        def self.accessible_selector(subject, test_id_attribute)
-          rule = RULES.find { |candidate| subject.match?(**candidate.except(:selector)) }
-          return rule[:selector] if rule
-          return :test_id if subject.attribute?(test_id_attribute)
-
-          :role unless subject.role.to_s.empty?
-        end
-
         def on_send(node)
           css_selector(node) do |css_node|
             subject = CssSubject.parse(css_node.value)
             next unless subject
 
-            selector = self.class.accessible_selector(subject, test_id_attribute)
-            next unless selector
+            rule = SelectorRules.for(subject, test_id_attribute)
+            next unless rule
 
-            add_offense(css_node, message: message(node.method_name, selector, subject, css_node)) do |corrector|
-              SelectorCorrection.new(node, selector, subject, test_id_attribute:)
-                                .call(corrector, *replacement_method(node.method_name, selector))
+            add_offense(css_node, message: message(node.method_name, rule, subject, css_node)) do |corrector|
+              autocorrect(corrector, node, rule, subject)
             end
           end
         end
@@ -148,9 +109,15 @@ module RuboCop
 
         private
 
-        def message(method_name, selector, subject, css_node)
+        def autocorrect(corrector, node, rule, subject)
+          SelectorCorrection.new(node, rule, subject, test_id_attribute:)
+                            .call(corrector, *replacement_method(node.method_name, rule[:selector]))
+        end
+
+        def message(method_name, rule, subject, css_node)
+          selector = rule[:selector]
           format(MSG, suggestion: suggestion(method_name, selector), selector: selector,
-                      hint: hint(selector, subject), css: css_node.source)
+                      hint: hint(rule, subject), css: css_node.source)
         end
 
         def suggestion(method_name, selector)
@@ -168,8 +135,9 @@ module RuboCop
           [SELECTOR_METHODS.fetch(method_name, method_name), false]
         end
 
-        def hint(selector, subject)
-          selector == :heading && subject.heading_level ? ", `level: #{subject.heading_level}`" : ""
+        def hint(rule, subject)
+          level = ", `level: #{subject.heading_level}`" if rule[:selector] == :heading && subject.heading_level
+          "#{level}#{rule[:hint]}"
         end
 
         def test_id_attribute

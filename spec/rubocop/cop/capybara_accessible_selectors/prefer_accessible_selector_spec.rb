@@ -34,9 +34,7 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       "details" => :disclosure,
       "summary" => :disclosure_button,
       "[role=grid]" => :grid,
-      "th" => :columnheader,
       "[role=columnheader]" => :columnheader,
-      "td" => :gridcell,
       "[role=gridcell]" => :gridcell,
       "tr" => :row,
       "[role=row]" => :row,
@@ -69,6 +67,22 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       expect_offense(<<~RUBY)
         find("h3")
              ^^^^ Prefer `find(:heading, …)` (capybara_accessible_selectors `:heading`, `level: 3`) over CSS selector `"h3"`.
+      RUBY
+    end
+
+    it "suggests :role for td, which is only a gridcell inside role=grid" do
+      expect_offense(<<~RUBY)
+        find("td")
+             ^^^^ Prefer `find(:role, …)` (capybara_accessible_selectors `:role`, `"cell"`; `:gridcell` inside `role=grid`) over CSS selector `"td"`.
+        find("td[role=gridcell]")
+             ^^^^^^^^^^^^^^^^^^^ Prefer `find(:gridcell, …)` (capybara_accessible_selectors `:gridcell`) over CSS selector `"td[role=gridcell]"`.
+      RUBY
+    end
+
+    it "mentions row headers for th" do
+      expect_offense(<<~RUBY)
+        find("th")
+             ^^^^ Prefer `find(:columnheader, …)` (capybara_accessible_selectors `:columnheader`; `:role, "rowheader"` for row headers) over CSS selector `"th"`.
       RUBY
     end
 
@@ -234,6 +248,16 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
         find("[itemprop]")
         find("[itemtype=Person]")
         find("[contenteditable]")
+      RUBY
+
+      expect_no_corrections
+    end
+
+    it "does not correct elements whose role depends on their context" do
+      expect_offense(annotate(<<~RUBY))
+        find("td")
+        find("th")
+        find("svg")
       RUBY
 
       expect_no_corrections
