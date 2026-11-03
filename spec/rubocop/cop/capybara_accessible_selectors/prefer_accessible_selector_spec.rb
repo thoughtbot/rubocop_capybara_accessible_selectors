@@ -214,10 +214,10 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       'expect(page).to have_css("[data-testid=submit]")' => 'expect(page).to have_selector(:test_id, "submit")',
       'expect(page).to have_css("h2", text: "Welcome")' => 'expect(page).to have_heading(level: 2, text: "Welcome")',
       'expect(page).to have_selector("[role=alert]")' => "expect(page).to have_alert",
-      'expect(page).to have_no_css "nav"' => "expect(page).to have_no_navigation",
+      'expect(page).to have_css "nav"' => "expect(page).to have_navigation",
       'expect(page).to have_css("nav", count: 2)' => "expect(page).to have_navigation(count: 2)",
       'expect(page).to have_css("img")' => "expect(page).to have_selector(:image)",
-      'page.has_no_css?("h1", wait: 0)' => "page.has_no_selector?(:heading, level: 1, wait: 0)",
+      'page.has_css?("h1", wait: 0)' => "page.has_selector?(:heading, level: 1, wait: 0)",
       'assert_selector("footer")' => "assert_selector(:contentinfo)",
       'within("dialog") { click_button "OK" }' => 'within_dialog { click_button "OK" }',
       'within("[role=tabpanel]", &block)' => "within_tab_panel(&block)",
@@ -258,6 +258,24 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
         find("td")
         find("th")
         find("svg")
+      RUBY
+
+      expect_no_corrections
+    end
+
+    it "does not correct negated assertions" do
+      expect_offense(annotate(<<~RUBY))
+        expect(page).to have_no_css("nav")
+        expect(page).to have_no_selector("nav")
+        expect(page).not_to have_css("nav")
+        expect(page).to_not have_selector("nav")
+        page.has_no_css?("nav")
+        page.has_no_selector?("nav")
+        assert_no_selector("nav")
+        refute_selector("nav")
+        refute page.has_css?("nav")
+        assert_not page.has_selector?("nav")
+        !page.has_css?("nav")
       RUBY
 
       expect_no_corrections

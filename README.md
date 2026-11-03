@@ -79,6 +79,8 @@ It also skips:
 - headings where `level:` can't be added (`find("h2", level: 3)`)
 - elements whose role depends on where they are: `td` is a `cell` in a plain table and only a `gridcell` inside `role=grid`, `th` can be a row header, and an `svg` icon hidden with `aria-hidden` isn't an image
 
+It never corrects negated assertions: `have_no_css`, `has_no_selector?`, `assert_no_selector`, `refute_selector`, `expect(…).not_to`, `refute`, `assert_not` and `!`. If the semantic selector matches something other than the CSS did, a positive assertion fails and you notice. A negative one keeps passing and you don't. These are still reported, so you can rewrite them by hand.
+
 The correction is unsafe, so it only runs with `rubocop -A`. Semantic selectors can match elements the CSS didn't: `:navigation` matches `[role=navigation]` as well as `nav`, and `:heading` without a level matches every heading. That can turn a passing `find` into an ambiguous match. Run your tests after correcting.
 
 ### Supported mappings

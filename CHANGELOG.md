@@ -7,3 +7,4 @@
 - Add unsafe autocorrection to `CapybaraAccessibleSelectors/PreferAccessibleSelector` for CSS selectors its semantic selector fully covers (`find("h2")` → `find(:heading, level: 2)`, `find("[data-testid=submit]")` → `find_by_test_id("submit")`).
 - Add opt-in `CapybaraAccessibleSelectors/NonAccessibleSelector` cop (disabled by default), which flags any CSS, XPath, id or class locator in Capybara calls. It defers to `PreferAccessibleSelector` for selectors that cop already reports.
 - `CapybaraAccessibleSelectors/PreferAccessibleSelector` suggests `:role, "cell"` for `td` and no longer autocorrects `td`, `th` or `svg`, whose roles depend on their context.
+- `CapybaraAccessibleSelectors/PreferAccessibleSelector` no longer autocorrects negated assertions (`have_no_css`, `assert_no_selector`, `expect(…).not_to`, …).

@@ -22,8 +22,10 @@ module RuboCop
       # didn't (`:navigation` matches `[role=navigation]` as well as `nav`),
       # which can make a `find` ambiguous.
       #
-      # Elements whose role depends on their context (`td`, `th`, `svg`) are
-      # reported but never corrected.
+      # Negated assertions (`have_no_css`, `expect(...).not_to`, ...) and
+      # elements whose role depends on their context (`td`, `th`, `svg`) are
+      # reported but never corrected, since a wrong rewrite there can pass
+      # silently.
       #
       # @example
       #   # bad
@@ -87,6 +89,14 @@ module RuboCop
           have_no_css: :have_no_selector
         }.freeze
 
+        # Methods that assert an element is absent.
+        NEGATED_METHODS = %i[
+          has_no_css? has_no_selector? have_no_css have_no_selector assert_no_selector refute_selector
+        ].freeze
+
+        # Calls that negate the assertion passed to them.
+        NEGATING_METHODS = %i[not_to to_not refute assert_not !].freeze
+
         # @!method css_selector(node)
         def_node_matcher :css_selector, <<~PATTERN
           {(call _ _ (sym :css) $str ...) (call _ _ $str ...)}
@@ -109,9 +119,21 @@ module RuboCop
 
         private
 
+        # Negated assertions aren't corrected: if the semantic selector matches
+        # something else, the assertion passes silently instead of failing.
         def autocorrect(corrector, node, rule, subject)
+          return if negated?(node)
+
           SelectorCorrection.new(node, rule, subject, test_id_attribute:)
                             .call(corrector, *replacement_method(node.method_name, rule[:selector]))
+        end
+
+        def negated?(node)
+          return true if NEGATED_METHODS.include?(node.method_name)
+
+          parent = node.parent
+          parent&.call_type? && NEGATING_METHODS.include?(parent.method_name) &&
+            (parent.receiver.equal?(node) || parent.arguments.any? { |argument| argument.equal?(node) })
         end
 
         def message(method_name, rule, subject, css_node)
