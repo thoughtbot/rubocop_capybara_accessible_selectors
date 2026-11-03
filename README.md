@@ -21,7 +21,7 @@ plugins:
   - rubocop_capybara_accessible_selectors
 ```
 
-This requires RuboCop 1.72 or later.
+This requires RuboCop 1.72 or later. The selectors it suggests come from capybara_accessible_selectors v0.16 or later. Earlier versions don't have `:image`, and v0.14 and earlier don't have `:role` or `:test_id`.
 
 ## Usage
 
@@ -93,6 +93,30 @@ It also skips:
 It never corrects negated assertions: `have_no_css`, `has_no_selector?`, `assert_no_selector`, `refute_selector`, `expect(…).not_to`, `refute`, `assert_not` and `!`. If the semantic selector matches something other than the CSS did, a positive assertion fails and you notice. A negative one keeps passing and you don't. These are still reported, so you can rewrite them by hand.
 
 The correction is unsafe, so it only runs with `rubocop -A`. Semantic selectors can match elements the CSS didn't: `:navigation` matches `[role=navigation]` as well as `nav`, and `:heading` without a level matches every heading. That can turn a passing `find` into an ambiguous match. Run your tests after correcting.
+
+### Hidden content and closed dialogs
+
+Semantic selectors find elements through the accessibility tree, so they can't see what isn't in it. Elements that are `hidden`, `inert`, `aria-hidden`, `display: none` or `visibility: hidden` have no role, and they don't match even with `visible: :all`. `:dialog` and `:modal` only match a `<dialog>` that is open.
+
+This catches out rack_test system, request and view specs. A dialog the page opens with JavaScript stays closed there, so the `:dialog` this cop suggests for `"dialog#add-company-dialog"` never matches it. To check that a closed dialog is on the page, add a selector for it, for example in `spec/support`:
+
+```ruby
+Capybara.add_selector(:closed_dialog, locator_type: [String, Regexp]) do
+  xpath { |*| XPath.descendant(:dialog)[!XPath.attr(:open)] }
+
+  locator_filter skip_if: nil do |node, locator, exact:, **|
+    name = node.accessible_name
+    case locator
+    when Regexp then locator.match?(name)
+    else exact ? name == locator : name.include?(locator)
+    end
+  end
+end
+
+expect(page).to have_selector(:closed_dialog, "Add company")
+```
+
+`accessible_name` comes from capybara_accessible_selectors. In a browser a closed dialog is hidden, so pass `visible: false` there too.
 
 ### Supported mappings
 
