@@ -2,6 +2,7 @@
 
 require_relative "capybara_accessible_selectors/css_subject"
 require_relative "capybara_accessible_selectors/selector_rules"
+require_relative "capybara_accessible_selectors/accessible_name"
 require_relative "capybara_accessible_selectors/selector_correction"
 require_relative "capybara_accessible_selectors/prefer_accessible_selector"
 require_relative "capybara_accessible_selectors/non_accessible_selector"

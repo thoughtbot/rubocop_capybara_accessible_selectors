@@ -212,7 +212,7 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       'find("[data-testid=submit]")' => 'find_by_test_id("submit")',
       'find(:css, "[data-testid=submit]")' => 'find_by_test_id("submit")',
       'expect(page).to have_css("[data-testid=submit]")' => 'expect(page).to have_selector(:test_id, "submit")',
-      'expect(page).to have_css("h2", text: "Welcome")' => 'expect(page).to have_heading(level: 2, text: "Welcome")',
+      'expect(page).to have_css("h2", text: "Welcome")' => 'expect(page).to have_heading("Welcome", level: 2)',
       'expect(page).to have_selector("[role=alert]")' => "expect(page).to have_alert",
       'expect(page).to have_css "nav"' => "expect(page).to have_navigation",
       'expect(page).to have_css("nav", count: 2)' => "expect(page).to have_navigation(count: 2)",
@@ -240,7 +240,6 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
         find("h2[role=button]")
         find("h2[aria-level=3]")
         find("[role=dialog][aria-modal=false]")
-        find("[role=region][aria-label=Comments]")
         find("[role='switch button']")
         find("button[data-testid=submit]")
         find("[data-testid=submit][role=switch]")
@@ -281,11 +280,60 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       expect_no_corrections
     end
 
+    describe "accessible names" do
+      {
+        'find("[role=region][aria-label=Comments]")' => 'find(:region, "Comments", exact: true)',
+        "find(\"[role='img'][aria-label='Closing price from last week']\")" =>
+          'find(:image, "Closing price from last week", exact: true)',
+        "within(\"[role=dialog][aria-label='Add company']\") { click_button \"Save\" }" =>
+          'within_dialog("Add company", exact: true) { click_button "Save" }',
+        'find("[role=region][aria-label=Comments]", wait: 0)' => 'find(:region, "Comments", wait: 0, exact: true)',
+        'find("[role=region][aria-label=Comments]", text: "Hi")' =>
+          'find(:region, "Comments", text: "Hi", exact: true)',
+        'assert_selector "h1", text: "Acme"' => 'assert_selector :heading, "Acme", level: 1',
+        'find("h2", text: /Welcome/)' => "find(:heading, /Welcome/, level: 2)",
+        'find("h2", text: "Welcome", exact_text: true)' => 'find(:heading, "Welcome", level: 2, exact: true)',
+        'find("h2", text: "Welcome", exact_text: false, wait: 0)' => 'find(:heading, "Welcome", level: 2, wait: 0)',
+        'find("h2", exact_text: "Welcome")' => 'find(:heading, "Welcome", level: 2, exact: true)',
+        'expect(page).to have_css("[role=heading]", text: "Hi")' => 'expect(page).to have_heading("Hi")',
+        'within("tr", text: "Bob") { click_on "Edit" }' => 'within(:row, "Bob") { click_on "Edit" }',
+        'find("[role=columnheader]", text: "Name")' => 'find(:columnheader, "Name")',
+        'find("[role=tab]", text: "Billing")' => 'find(:tab_button, "Billing")',
+        'find("summary", text: "More")' => 'find(:disclosure_button, "More")',
+        'find("nav", text: "Home")' => 'find(:navigation, text: "Home")',
+        'find("h2", text: welcome)' => "find(:heading, level: 2, text: welcome)",
+        'find("h2", text: "Hi", exact: true)' => 'find(:heading, level: 2, text: "Hi", exact: true)',
+        'find("h2", text: /Hi/, exact_text: true)' => "find(:heading, level: 2, text: /Hi/, exact_text: true)",
+        'find("h2", text: "Hi", exact_text: "Hi")' => 'find(:heading, level: 2, text: "Hi", exact_text: "Hi")'
+      }.each do |source, corrected|
+        it "corrects #{source}" do
+          expect_offense(annotate("#{source}\n"))
+
+          expect_correction("#{corrected}\n")
+        end
+      end
+
+      it "does not correct an aria-label it can't use as the locator" do
+        expect_offense(annotate(<<~RUBY))
+          find("[role=region][aria-label='']")
+          find("[role=region][aria-label]")
+          find("[role=region][aria-label=Comments]", exact: false)
+          find("[role=region][aria-label=Comments]", **options)
+          find("[role=alert][aria-label=Saved]")
+          find("[data-testid=submit][aria-label=Submit]")
+          find("[role=switch][aria-label=Dark]")
+        RUBY
+
+        expect_no_corrections
+      end
+    end
+
     it "does not correct headings when level: can't be added" do
       expect_offense(annotate(<<~RUBY))
         find("h2", level: 3)
         find("h2", { text: "Welcome" })
         find("h2", *options)
+        find("h2", **options)
       RUBY
 
       expect_no_corrections

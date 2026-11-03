@@ -56,7 +56,6 @@ The cop only looks at the subject of the selector, so `".card h2"` is treated li
 The cop autocorrects selectors that are only a tag name and attributes the semantic selector covers in full. It fills in the selector type, a `level:` for `h1`–`h6`, and a locator when the CSS has one: the test id, the `role` for `:role`, and the `itemprop` for `:item`. It uses the shortcut method when there is one:
 
 ```ruby
-find("h2", text: "Welcome")              # => find(:heading, level: 2, text: "Welcome")
 expect(page).to have_css("[role=alert]") # => expect(page).to have_alert
 within("dialog") { click_button "OK" }   # => within_dialog { click_button "OK" }
 within("nav") { click_link "Home" }      # => within(:navigation) { click_link "Home" }
@@ -64,13 +63,25 @@ find("[data-testid=submit]")             # => find_by_test_id("submit")
 all("[role=switch]")                     # => all(:role, "switch")
 ```
 
-The accessible name can't be worked out from the CSS, so add it yourself after correcting.
+It also fills in the accessible name when it can find one:
+
+- An `aria-label` becomes the locator, matched exactly. This works for any selector that's located by its accessible name.
+- A literal `text:` becomes the locator for selectors whose name comes from their content: `:heading`, `:columnheader`, `:gridcell`, `:row`, `:menuitem`, `:tab_button` and `:disclosure_button`. `exact_text:` becomes `exact: true`.
+
+```ruby
+find("[role=region][aria-label=Comments]") # => find(:region, "Comments", exact: true)
+assert_selector "h1", text: "Acme"         # => assert_selector :heading, "Acme", level: 1
+find("h2", exact_text: "Welcome")          # => find(:heading, "Welcome", level: 2, exact: true)
+within("tr", text: "Bob") { click_on "Edit" } # => within(:row, "Bob") { click_on "Edit" }
+```
+
+Other selectors keep `text:` as it is (`find("nav", text: "Home")` becomes `find(:navigation, text: "Home")`). Their name comes from `aria-label` or `aria-labelledby`, not from their content. Otherwise, add the accessible name yourself after correcting.
 
 The cop leaves a selector alone when correcting it would drop part of it. That covers:
 
 - ancestors (`".card h2"`)
 - classes, ids and pseudo-classes (`"h2.title"`)
-- a tag or attribute the semantic selector doesn't check (`"div[role=dialog]"`, `"[role=region][aria-label=Comments]"`)
+- a tag or attribute the semantic selector doesn't check (`"div[role=dialog]"`, `"[role=switch][aria-label=Dark]"`)
 - attributes with no value to use as a locator (`"[data-testid]"`)
 
 It also skips:

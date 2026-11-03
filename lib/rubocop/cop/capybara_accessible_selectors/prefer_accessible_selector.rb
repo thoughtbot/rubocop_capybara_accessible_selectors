@@ -17,10 +17,12 @@ module RuboCop
       # Autocorrection is unsafe and only happens when the whole CSS selector
       # is a tag name and attributes that the semantic selector fully covers,
       # like `"h2"`, `"[role=dialog][aria-modal=true]"` or
-      # `"[data-testid=submit]"`. The accessible name can't be inferred, so it
-      # is left for you to add. Semantic selectors also match elements the CSS
-      # didn't (`:navigation` matches `[role=navigation]` as well as `nav`),
-      # which can make a `find` ambiguous.
+      # `"[data-testid=submit]"`. An `aria-label`, or a literal `text:` for
+      # selectors named by their content, becomes the accessible name
+      # locator; otherwise the name is left for you to add. Semantic selectors
+      # also match elements the CSS didn't (`:navigation` matches
+      # `[role=navigation]` as well as `nav`), which can make a `find`
+      # ambiguous.
       #
       # Negated assertions (`have_no_css`, `expect(...).not_to`, ...) and
       # elements whose role depends on their context (`td`, `th`, `svg`) are
