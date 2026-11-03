@@ -21,7 +21,7 @@ plugins:
   - rubocop_capybara_accessible_selectors
 ```
 
-This requires RuboCop 1.72 or later.
+This requires RuboCop 1.72 or later. The selectors it suggests come from capybara_accessible_selectors v0.16 or later. Earlier versions don't have `:image`, and v0.14 and earlier don't have `:role` or `:test_id`.
 
 ## Usage
 
@@ -56,7 +56,6 @@ The cop only looks at the subject of the selector, so `".card h2"` is treated li
 The cop autocorrects selectors that are only a tag name and attributes the semantic selector covers in full. It fills in the selector type, a `level:` for `h1`–`h6`, and a locator when the CSS has one: the test id, the `role` for `:role`, and the `itemprop` for `:item`. It uses the shortcut method when there is one:
 
 ```ruby
-find("h2", text: "Welcome")              # => find(:heading, level: 2, text: "Welcome")
 expect(page).to have_css("[role=alert]") # => expect(page).to have_alert
 within("dialog") { click_button "OK" }   # => within_dialog { click_button "OK" }
 within("nav") { click_link "Home" }      # => within(:navigation) { click_link "Home" }
@@ -64,11 +63,60 @@ find("[data-testid=submit]")             # => find_by_test_id("submit")
 all("[role=switch]")                     # => all(:role, "switch")
 ```
 
-The accessible name can't be worked out from the CSS, so add it yourself after correcting.
+It also fills in the accessible name when it can find one:
 
-The cop leaves a selector alone when correcting it would drop part of it. That covers ancestors (`".card h2"`), classes, ids and pseudo-classes (`"h2.title"`), a tag or attribute the semantic selector doesn't check (`"div[role=dialog]"`, `"[role=region][aria-label=Comments]"`), and attributes with no value to use as a locator (`"[data-testid]"`). It also skips `:rich_text` and `:item_type`, and headings where `level:` can't be added (`find("h2", level: 3)`).
+- An `aria-label` becomes the locator, matched exactly. This works for any selector that's located by its accessible name.
+- A literal `text:` becomes the locator for selectors whose name comes from their content: `:heading`, `:columnheader`, `:gridcell`, `:row`, `:menuitem`, `:tab_button` and `:disclosure_button`. `exact_text:` becomes `exact: true`.
+
+```ruby
+find("[role=region][aria-label=Comments]") # => find(:region, "Comments", exact: true)
+assert_selector "h1", text: "Acme"         # => assert_selector :heading, "Acme", level: 1
+find("h2", exact_text: "Welcome")          # => find(:heading, "Welcome", level: 2, exact: true)
+within("tr", text: "Bob") { click_on "Edit" } # => within(:row, "Bob") { click_on "Edit" }
+```
+
+Other selectors keep `text:` as it is (`find("nav", text: "Home")` becomes `find(:navigation, text: "Home")`). Their name comes from `aria-label` or `aria-labelledby`, not from their content. Otherwise, add the accessible name yourself after correcting.
+
+The cop leaves a selector alone when correcting it would drop part of it. That covers:
+
+- ancestors (`".card h2"`)
+- classes, ids and pseudo-classes (`"h2.title"`)
+- a tag or attribute the semantic selector doesn't check (`"div[role=dialog]"`, `"[role=switch][aria-label=Dark]"`)
+- attributes with no value to use as a locator (`"[data-testid]"`)
+
+It also skips:
+
+- `:rich_text` and `:item_type`
+- headings where `level:` can't be added (`find("h2", level: 3)`)
+- elements whose role depends on where they are: `td` is a `cell` in a plain table and only a `gridcell` inside `role=grid`, `th` can be a row header, and an `svg` icon hidden with `aria-hidden` isn't an image
+
+It never corrects negated assertions: `have_no_css`, `has_no_selector?`, `assert_no_selector`, `refute_selector`, `expect(…).not_to`, `refute`, `assert_not` and `!`. If the semantic selector matches something other than the CSS did, a positive assertion fails and you notice. A negative one keeps passing and you don't. These are still reported, so you can rewrite them by hand.
 
 The correction is unsafe, so it only runs with `rubocop -A`. Semantic selectors can match elements the CSS didn't: `:navigation` matches `[role=navigation]` as well as `nav`, and `:heading` without a level matches every heading. That can turn a passing `find` into an ambiguous match. Run your tests after correcting.
+
+### Hidden content and closed dialogs
+
+Semantic selectors find elements through the accessibility tree, so they can't see what isn't in it. Elements that are `hidden`, `inert`, `aria-hidden`, `display: none` or `visibility: hidden` have no role, and they don't match even with `visible: :all`. `:dialog` and `:modal` only match a `<dialog>` that is open.
+
+This catches out rack_test system, request and view specs. A dialog the page opens with JavaScript stays closed there, so the `:dialog` this cop suggests for `"dialog#add-company-dialog"` never matches it. To check that a closed dialog is on the page, add a selector for it, for example in `spec/support`:
+
+```ruby
+Capybara.add_selector(:closed_dialog, locator_type: [String, Regexp]) do
+  xpath { |*| XPath.descendant(:dialog)[!XPath.attr(:open)] }
+
+  locator_filter skip_if: nil do |node, locator, exact:, **|
+    name = node.accessible_name
+    case locator
+    when Regexp then locator.match?(name)
+    else exact ? name == locator : name.include?(locator)
+    end
+  end
+end
+
+expect(page).to have_selector(:closed_dialog, "Add company")
+```
+
+`accessible_name` comes from capybara_accessible_selectors. In a browser a closed dialog is hidden, so pass `visible: false` there too.
 
 ### Supported mappings
 
@@ -88,10 +136,11 @@ The correction is unsafe, so it only runs with `rubocop -A`. Semantic selectors 
 | `details` | `:disclosure` |
 | `summary` | `:disclosure_button` |
 | `[role=grid]` | `:grid` |
-| `th`, `[role=columnheader]` | `:columnheader` |
-| `td`, `[role=gridcell]` | `:gridcell` |
+| `th`, `[role=columnheader]` | `:columnheader` (`th` isn't autocorrected) |
+| `[role=gridcell]` | `:gridcell` |
+| `td` | `:role, "cell"` (not autocorrected) |
 | `tr`, `[role=row]` | `:row` |
-| `img`, `svg`, `[role=img]`, `[role=image]` | `:image` |
+| `img`, `svg`, `[role=img]`, `[role=image]` | `:image` (`svg` isn't autocorrected) |
 | `[role=menu]` | `:menu` |
 | `[role=menuitem]` | `:menuitem` |
 | `[role=tabpanel]` | `:tab_panel` |
@@ -132,6 +181,13 @@ It reports:
 - locators typed as `:css`, `:id`, `:xpath` or `:class`, even when they're variables: `find(:css, selector)`, `find(:id, "x")`, `all(:xpath, xpath)`
 - anything passed to CSS-only and XPath-only methods: `have_css(selector)`, `has_xpath?("//li")`, `assert_css`, `assert_no_css`, `refute_css`, `assert_xpath`, `assert_no_xpath`, `refute_xpath`
 - `find_by_id`
+- with `CheckElementAttributes: true`, the `:element` selector located by `id:`, `class:` or a `data-*` attribute: `within(:element, id: "x")`, `find(:element, "div", "data-testid": "card")`, `have_element("div", class: "card")`
+
+```yaml
+CapybaraAccessibleSelectors/NonAccessibleSelector:
+  Enabled: true
+  CheckElementAttributes: true
+```
 
 ```ruby
 # bad

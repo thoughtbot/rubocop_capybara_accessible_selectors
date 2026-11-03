@@ -17,10 +17,17 @@ module RuboCop
       # Autocorrection is unsafe and only happens when the whole CSS selector
       # is a tag name and attributes that the semantic selector fully covers,
       # like `"h2"`, `"[role=dialog][aria-modal=true]"` or
-      # `"[data-testid=submit]"`. The accessible name can't be inferred, so it
-      # is left for you to add. Semantic selectors also match elements the CSS
-      # didn't (`:navigation` matches `[role=navigation]` as well as `nav`),
-      # which can make a `find` ambiguous.
+      # `"[data-testid=submit]"`. An `aria-label`, or a literal `text:` for
+      # selectors named by their content, becomes the accessible name
+      # locator; otherwise the name is left for you to add. Semantic selectors
+      # also match elements the CSS didn't (`:navigation` matches
+      # `[role=navigation]` as well as `nav`), which can make a `find`
+      # ambiguous.
+      #
+      # Negated assertions (`have_no_css`, `expect(...).not_to`, ...) and
+      # elements whose role depends on their context (`td`, `th`, `svg`) are
+      # reported but never corrected, since a wrong rewrite there can pass
+      # silently.
       #
       # @example
       #   # bad
@@ -57,38 +64,6 @@ module RuboCop
           assert_selector assert_no_selector refute_selector
         ].freeze
 
-        HEADING_TAGS = %w[h1 h2 h3 h4 h5 h6].freeze
-
-        # Ordered most-specific first; the first matching rule wins.
-        RULES = [
-          { selector: :modal, roles: %w[dialog alertdialog], with: { "aria-modal" => "true" } },
-          { selector: :dialog, tags: %w[dialog], roles: %w[dialog alertdialog] },
-          { selector: :heading, tags: HEADING_TAGS, roles: %w[heading] },
-          { selector: :alert, roles: %w[alert] },
-          { selector: :article, tags: %w[article], roles: %w[article] },
-          { selector: :banner, tags: %w[header], roles: %w[banner] },
-          { selector: :contentinfo, tags: %w[footer], roles: %w[contentinfo] },
-          { selector: :main, tags: %w[main], roles: %w[main] },
-          { selector: :navigation, tags: %w[nav], roles: %w[navigation] },
-          { selector: :region, roles: %w[region] },
-          { selector: :section, tags: %w[section aside] },
-          { selector: :disclosure, tags: %w[details] },
-          { selector: :disclosure_button, tags: %w[summary] },
-          { selector: :grid, roles: %w[grid] },
-          { selector: :columnheader, tags: %w[th], roles: %w[columnheader] },
-          { selector: :gridcell, tags: %w[td], roles: %w[gridcell] },
-          { selector: :row, tags: %w[tr], roles: %w[row] },
-          { selector: :image, tags: %w[img svg], roles: %w[img image] },
-          { selector: :menu, roles: %w[menu] },
-          { selector: :menuitem, roles: %w[menuitem] },
-          { selector: :tab_panel, roles: %w[tabpanel] },
-          { selector: :tab_button, roles: %w[tab] },
-          { selector: :combo_box, roles: %w[combobox] },
-          { selector: :rich_text, attributes: %w[contenteditable] },
-          { selector: :item, attributes: %w[itemprop] },
-          { selector: :item_type, attributes: %w[itemtype] }
-        ].freeze
-
         # Selectors with a `have_<name>` / `have_no_<name>` matcher shortcut.
         HAVE_SHORTCUTS = %i[
           alert article banner columnheader combo_box contentinfo disclosure
@@ -116,31 +91,29 @@ module RuboCop
           have_no_css: :have_no_selector
         }.freeze
 
+        # Methods that assert an element is absent.
+        NEGATED_METHODS = %i[
+          has_no_css? has_no_selector? have_no_css have_no_selector assert_no_selector refute_selector
+        ].freeze
+
+        # Calls that negate the assertion passed to them.
+        NEGATING_METHODS = %i[not_to to_not refute assert_not !].freeze
+
         # @!method css_selector(node)
         def_node_matcher :css_selector, <<~PATTERN
           {(call _ _ (sym :css) $str ...) (call _ _ $str ...)}
         PATTERN
-
-        # The semantic selector for a parsed CSS subject, or nil when there is none.
-        def self.accessible_selector(subject, test_id_attribute)
-          rule = RULES.find { |candidate| subject.match?(**candidate.except(:selector)) }
-          return rule[:selector] if rule
-          return :test_id if subject.attribute?(test_id_attribute)
-
-          :role unless subject.role.to_s.empty?
-        end
 
         def on_send(node)
           css_selector(node) do |css_node|
             subject = CssSubject.parse(css_node.value)
             next unless subject
 
-            selector = self.class.accessible_selector(subject, test_id_attribute)
-            next unless selector
+            rule = SelectorRules.for(subject, test_id_attribute)
+            next unless rule
 
-            add_offense(css_node, message: message(node.method_name, selector, subject, css_node)) do |corrector|
-              SelectorCorrection.new(node, selector, subject, test_id_attribute:)
-                                .call(corrector, *replacement_method(node.method_name, selector))
+            add_offense(css_node, message: message(node.method_name, rule, subject, css_node)) do |corrector|
+              autocorrect(corrector, node, rule, subject)
             end
           end
         end
@@ -148,9 +121,27 @@ module RuboCop
 
         private
 
-        def message(method_name, selector, subject, css_node)
+        # Negated assertions aren't corrected: if the semantic selector matches
+        # something else, the assertion passes silently instead of failing.
+        def autocorrect(corrector, node, rule, subject)
+          return if negated?(node)
+
+          SelectorCorrection.new(node, rule, subject, test_id_attribute:)
+                            .call(corrector, *replacement_method(node.method_name, rule[:selector]))
+        end
+
+        def negated?(node)
+          return true if NEGATED_METHODS.include?(node.method_name)
+
+          parent = node.parent
+          parent&.call_type? && NEGATING_METHODS.include?(parent.method_name) &&
+            (parent.receiver.equal?(node) || parent.arguments.any? { |argument| argument.equal?(node) })
+        end
+
+        def message(method_name, rule, subject, css_node)
+          selector = rule[:selector]
           format(MSG, suggestion: suggestion(method_name, selector), selector: selector,
-                      hint: hint(selector, subject), css: css_node.source)
+                      hint: hint(rule, subject), css: css_node.source)
         end
 
         def suggestion(method_name, selector)
@@ -168,8 +159,9 @@ module RuboCop
           [SELECTOR_METHODS.fetch(method_name, method_name), false]
         end
 
-        def hint(selector, subject)
-          selector == :heading && subject.heading_level ? ", `level: #{subject.heading_level}`" : ""
+        def hint(rule, subject)
+          level = ", `level: #{subject.heading_level}`" if rule[:selector] == :heading && subject.heading_level
+          "#{level}#{rule[:hint]}"
         end
 
         def test_id_attribute

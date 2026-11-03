@@ -34,9 +34,7 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       "details" => :disclosure,
       "summary" => :disclosure_button,
       "[role=grid]" => :grid,
-      "th" => :columnheader,
       "[role=columnheader]" => :columnheader,
-      "td" => :gridcell,
       "[role=gridcell]" => :gridcell,
       "tr" => :row,
       "[role=row]" => :row,
@@ -69,6 +67,22 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       expect_offense(<<~RUBY)
         find("h3")
              ^^^^ Prefer `find(:heading, …)` (capybara_accessible_selectors `:heading`, `level: 3`) over CSS selector `"h3"`.
+      RUBY
+    end
+
+    it "suggests :role for td, which is only a gridcell inside role=grid" do
+      expect_offense(<<~RUBY)
+        find("td")
+             ^^^^ Prefer `find(:role, …)` (capybara_accessible_selectors `:role`, `"cell"`; `:gridcell` inside `role=grid`) over CSS selector `"td"`.
+        find("td[role=gridcell]")
+             ^^^^^^^^^^^^^^^^^^^ Prefer `find(:gridcell, …)` (capybara_accessible_selectors `:gridcell`) over CSS selector `"td[role=gridcell]"`.
+      RUBY
+    end
+
+    it "mentions row headers for th" do
+      expect_offense(<<~RUBY)
+        find("th")
+             ^^^^ Prefer `find(:columnheader, …)` (capybara_accessible_selectors `:columnheader`; `:role, "rowheader"` for row headers) over CSS selector `"th"`.
       RUBY
     end
 
@@ -198,12 +212,12 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       'find("[data-testid=submit]")' => 'find_by_test_id("submit")',
       'find(:css, "[data-testid=submit]")' => 'find_by_test_id("submit")',
       'expect(page).to have_css("[data-testid=submit]")' => 'expect(page).to have_selector(:test_id, "submit")',
-      'expect(page).to have_css("h2", text: "Welcome")' => 'expect(page).to have_heading(level: 2, text: "Welcome")',
+      'expect(page).to have_css("h2", text: "Welcome")' => 'expect(page).to have_heading("Welcome", level: 2)',
       'expect(page).to have_selector("[role=alert]")' => "expect(page).to have_alert",
-      'expect(page).to have_no_css "nav"' => "expect(page).to have_no_navigation",
+      'expect(page).to have_css "nav"' => "expect(page).to have_navigation",
       'expect(page).to have_css("nav", count: 2)' => "expect(page).to have_navigation(count: 2)",
       'expect(page).to have_css("img")' => "expect(page).to have_selector(:image)",
-      'page.has_no_css?("h1", wait: 0)' => "page.has_no_selector?(:heading, level: 1, wait: 0)",
+      'page.has_css?("h1", wait: 0)' => "page.has_selector?(:heading, level: 1, wait: 0)",
       'assert_selector("footer")' => "assert_selector(:contentinfo)",
       'within("dialog") { click_button "OK" }' => 'within_dialog { click_button "OK" }',
       'within("[role=tabpanel]", &block)' => "within_tab_panel(&block)",
@@ -226,7 +240,6 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
         find("h2[role=button]")
         find("h2[aria-level=3]")
         find("[role=dialog][aria-modal=false]")
-        find("[role=region][aria-label=Comments]")
         find("[role='switch button']")
         find("button[data-testid=submit]")
         find("[data-testid=submit][role=switch]")
@@ -239,11 +252,88 @@ RSpec.describe RuboCop::Cop::CapybaraAccessibleSelectors::PreferAccessibleSelect
       expect_no_corrections
     end
 
+    it "does not correct elements whose role depends on their context" do
+      expect_offense(annotate(<<~RUBY))
+        find("td")
+        find("th")
+        find("svg")
+      RUBY
+
+      expect_no_corrections
+    end
+
+    it "does not correct negated assertions" do
+      expect_offense(annotate(<<~RUBY))
+        expect(page).to have_no_css("nav")
+        expect(page).to have_no_selector("nav")
+        expect(page).not_to have_css("nav")
+        expect(page).to_not have_selector("nav")
+        page.has_no_css?("nav")
+        page.has_no_selector?("nav")
+        assert_no_selector("nav")
+        refute_selector("nav")
+        refute page.has_css?("nav")
+        assert_not page.has_selector?("nav")
+        !page.has_css?("nav")
+      RUBY
+
+      expect_no_corrections
+    end
+
+    describe "accessible names" do
+      {
+        'find("[role=region][aria-label=Comments]")' => 'find(:region, "Comments", exact: true)',
+        "find(\"[role='img'][aria-label='Closing price from last week']\")" =>
+          'find(:image, "Closing price from last week", exact: true)',
+        "within(\"[role=dialog][aria-label='Add company']\") { click_button \"Save\" }" =>
+          'within_dialog("Add company", exact: true) { click_button "Save" }',
+        'find("[role=region][aria-label=Comments]", wait: 0)' => 'find(:region, "Comments", wait: 0, exact: true)',
+        'find("[role=region][aria-label=Comments]", text: "Hi")' =>
+          'find(:region, "Comments", text: "Hi", exact: true)',
+        'assert_selector "h1", text: "Acme"' => 'assert_selector :heading, "Acme", level: 1',
+        'find("h2", text: /Welcome/)' => "find(:heading, /Welcome/, level: 2)",
+        'find("h2", text: "Welcome", exact_text: true)' => 'find(:heading, "Welcome", level: 2, exact: true)',
+        'find("h2", text: "Welcome", exact_text: false, wait: 0)' => 'find(:heading, "Welcome", level: 2, wait: 0)',
+        'find("h2", exact_text: "Welcome")' => 'find(:heading, "Welcome", level: 2, exact: true)',
+        'expect(page).to have_css("[role=heading]", text: "Hi")' => 'expect(page).to have_heading("Hi")',
+        'within("tr", text: "Bob") { click_on "Edit" }' => 'within(:row, "Bob") { click_on "Edit" }',
+        'find("[role=columnheader]", text: "Name")' => 'find(:columnheader, "Name")',
+        'find("[role=tab]", text: "Billing")' => 'find(:tab_button, "Billing")',
+        'find("summary", text: "More")' => 'find(:disclosure_button, "More")',
+        'find("nav", text: "Home")' => 'find(:navigation, text: "Home")',
+        'find("h2", text: welcome)' => "find(:heading, level: 2, text: welcome)",
+        'find("h2", text: "Hi", exact: true)' => 'find(:heading, level: 2, text: "Hi", exact: true)',
+        'find("h2", text: /Hi/, exact_text: true)' => "find(:heading, level: 2, text: /Hi/, exact_text: true)",
+        'find("h2", text: "Hi", exact_text: "Hi")' => 'find(:heading, level: 2, text: "Hi", exact_text: "Hi")'
+      }.each do |source, corrected|
+        it "corrects #{source}" do
+          expect_offense(annotate("#{source}\n"))
+
+          expect_correction("#{corrected}\n")
+        end
+      end
+
+      it "does not correct an aria-label it can't use as the locator" do
+        expect_offense(annotate(<<~RUBY))
+          find("[role=region][aria-label='']")
+          find("[role=region][aria-label]")
+          find("[role=region][aria-label=Comments]", exact: false)
+          find("[role=region][aria-label=Comments]", **options)
+          find("[role=alert][aria-label=Saved]")
+          find("[data-testid=submit][aria-label=Submit]")
+          find("[role=switch][aria-label=Dark]")
+        RUBY
+
+        expect_no_corrections
+      end
+    end
+
     it "does not correct headings when level: can't be added" do
       expect_offense(annotate(<<~RUBY))
         find("h2", level: 3)
         find("h2", { text: "Welcome" })
         find("h2", *options)
+        find("h2", **options)
       RUBY
 
       expect_no_corrections
